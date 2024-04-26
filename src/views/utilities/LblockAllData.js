@@ -8,163 +8,175 @@ import TableBody from '@mui/material/TableBody';
 import TableRow from '@mui/material/TableRow';
 import TableCell from '@mui/material/TableCell';
 import TablePagination from '@mui/material/TablePagination';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import Button from '@mui/material/Button';
 
 const FilterSearchblock = ({ block, department }) => {
   const [categories, setCategories] = useState([]);
-  const [departmentData, setDepartmentData] = useState([]);
+  const [categoryData, setCategoryData] = useState({});
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [jsonData, setJsonData] = useState(null);
-  const [excelGenerated, setExcelGenerated] = useState(false);
-  const [pdfGenerated, setPdfGenerated] = useState(false);
+  const [modifiedData, setModifiedData] = useState({});
+  const [isModifying, setIsModifying] = useState({});
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchCategories = async () => {
       try {
-        const response = await axios.get(`http://localhost:8010/api/block/categories/${block}/${department}`);
+        const response = await axios.get(`http://localhost:8010/api/block/categories/L/IT`);
         setCategories(response.data);
-        const allData = await Promise.all(response.data.map(category => 
-          axios.get(`http://localhost:8010/api/block/category/${block}/${department}/${category}`)
-        ));
-        setDepartmentData(allData.map(res => res.data));
       } catch (error) {
         console.error(`Error fetching categories for department ${department} in block ${block}:`, error);
       }
     };
-    fetchData();
+    fetchCategories();
   }, [block, department]);
 
   useEffect(() => {
-    if (departmentData.length > 0) {
-      fetchJsonData();
-    }
-  }, [departmentData]);
-
-  const fetchJsonData = () => {
-    const jsonDataArray = departmentData.map(categoryData => {
-      const keys = Object.keys(categoryData[0]);
-      return categoryData.map(item => {
-        const row = {};
-        keys.forEach(key => {
-          if (key !== '_id') {
-            row[key] = item[key];
-          }
-        });
-        return row;
+    const fetchDataForCategories = async () => {
+      categories.forEach(async (category) => {
+        try {
+          const response = await axios.get(`http://localhost:8010/api/block/category/L/IT/${category}`);
+          setCategoryData(prevData => ({
+            ...prevData,
+            [category]: response.data
+          }));
+        } catch (error) {
+          console.error(`Error fetching ${category} data for department ${department} in block ${block}:`, error);
+        }
       });
-    });
-
-    setJsonData(jsonDataArray);
-  };
-
-  const convertJsonToExcel = () => {
-    if (!jsonData) return;
-
-    const workBooks = jsonData.map((categoryData, index) => {
-      const keys = Object.keys(categoryData[0]);
-      const data = categoryData.map(item => {
-        const row = {};
-        keys.forEach(key => {
-          if (key !== '_id') {
-            row[key] = item[key];
-          }
-        });
-        return row;
-      });
-
-      const workSheet = XLSX.utils.json_to_sheet(data);
-      const workBook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workBook, workSheet, `category_${index + 1}`);
-      return workBook;
-    });
-
-    const mergedWorkBook = workBooks.reduce((acc, wb) => {
-      XLSX.utils.book_append_sheet(acc, wb.Sheets[wb.SheetNames[0]]);
-      return acc;
-    }, XLSX.utils.book_new());
-
-    XLSX.writeFile(mergedWorkBook, 'mergedData.xlsx');
-    setExcelGenerated(true);
-  };
-
-  const convertJsonToPDF = () => {
-    if (!jsonData) return;
-
-    const doc = new jsPDF();
-
-    jsonData.forEach((categoryData, index) => {
-      const keys = Object.keys(categoryData[0]).filter(key => key !== '_id');
-      const data = categoryData.map(item =>
-        keys.map(key => (typeof item[key] === 'boolean' ? (item[key] ? 'Yes' : 'No') : item[key]))
-      );
-
-      if (index !== 0) {
-        doc.addPage();
-      }
-
-      doc.autoTable({ head: [keys], body: data });
-    });
-
-    doc.save('mergedData.pdf');
-    setPdfGenerated(true);
-  };
+    };
+    fetchDataForCategories();
+  }, [block, department, categories]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
   };
 
-  const handleChangeRowsPerPage = (event) => {
+  const handleChangeRowsPerPage = event => {
     setRowsPerPage(+event.target.value);
     setPage(0);
   };
 
+  const handleModifyData = (id) => {
+    setIsModifying(prevState => ({
+      ...prevState,
+      [id]: true
+    }));
+  };
+
+  const handleSubmitData = async (category, id) => {
+    try {
+      await axios.put(`http://localhost:8010/api/block/category/L/IT/${category}/${id}`, modifiedData[id]);
+      // Refresh data after modification
+      const response = await axios.get(`http://localhost:8010/api/block/category/L/IT/${category}`);
+      setCategoryData(prevData => ({
+        ...prevData,
+        [category]: response.data
+      }));
+      setIsModifying(prevState => ({
+        ...prevState,
+        [id]: false
+      }));
+    } catch (error) {
+      console.error(`Error modifying/updating data for category ${category} at id ${id}:`, error);
+    }
+  };
+
+  const handleInputChange = (e, id) => {
+    const { name, value } = e.target;
+    setModifiedData(prevData => ({
+      ...prevData,
+      [id]: {
+        ...prevData[id],
+        [name]: value
+      }
+    }));
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <Paper style={{ width: '100%', overflow: 'hidden', marginTop: '20px' }}>
-        <TableContainer style={{ maxHeight: '440px', overflowY: 'auto' }}>
-          <Table stickyHeader aria-label="sticky table">
-            {jsonData && jsonData.map((categoryData, index) => (
-              <React.Fragment key={`category_${index}`}>
-                <TableHead>
-                  <TableRow>
-                    {Object.keys(categoryData[0]).map((key) => (
-                      key !== '_id' && <TableCell key={key}>{key}</TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {categoryData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((item, rowIndex) => (
-                    <TableRow key={`row_${rowIndex}`}>
-                      {Object.keys(item).map((key) => (
-                        key !== '_id' && <TableCell key={key}>{typeof item[key] === 'boolean' ? (item[key] ? 'Yes' : 'No') : item[key]}</TableCell>
-                      ))}
-                    </TableRow>
+      {categories.map((category, index) => (
+        <Paper key={index} style={{ width: '100%', overflow: 'hidden', marginTop: '20px' }}>
+          <TableContainer style={{ maxHeight: '440px', overflowY: 'auto' }}>
+            <Table stickyHeader aria-label="sticky table">
+              <TableHead>
+                <TableRow>
+                  <TableCell colSpan={Object.keys(categoryData[category]?.[0] || {}).length + 2} style={{ position: 'sticky', top: 0, backgroundColor: 'white' }}>
+                    Category: {category}
+                    <Button  variant="contained"style={{ backgroundColor: 'blue', color: 'white',marginLeft: '30px' }}>Upload</Button>
+
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  {Object.keys(categoryData[category]?.[0] || {}).map((key, keyIndex) => (
+                    key !== '_id' && // Filter out _id field
+                    <TableCell key={keyIndex}>{key}</TableCell>
                   ))}
-                </TableBody>
-              </React.Fragment>
-            ))}
-          </Table>
-        </TableContainer>
-        <TablePagination
-          style={{ marginTop: '20px' }}
-          rowsPerPageOptions={[10, 25, 100]}
-          component="div"
-          count={departmentData.flat().length}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
-      </Paper>
-      <div style={{ marginTop: '20px' }}>
-        <button onClick={convertJsonToExcel} style={{ marginRight: '10px' }}>Generate Excel</button>
-        <button onClick={convertJsonToPDF}>Generate PDF</button>
-      </div>
-      {excelGenerated && <p>Excel file generated successfully.</p>}
-      {pdfGenerated && <p>PDF file generated successfully.</p>}
+                  <TableCell>Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {categoryData[category] && categoryData[category].map((dataItem, dataIndex) => (
+                  <TableRow key={dataIndex}>
+                    {Object.keys(dataItem).map((key, keyIndex) => (
+                      key !== '_id' && // Filter out _id field
+                      <TableCell key={keyIndex}>
+                        {isModifying[dataItem._id] ? (
+                          <input
+                            type="text"
+                            name={key}
+                            value={modifiedData[dataItem._id]?.[key] || dataItem[key]}
+                            onChange={(e) => handleInputChange(e, dataItem._id)}
+                          />
+                        ) : (
+                          dataItem[key]
+                        )}
+                      </TableCell>
+                    ))}
+                    <TableCell>
+                      {isModifying[dataItem._id] ? (
+                        <Button
+                          onClick={() => handleSubmitData(category, dataItem._id)}
+                          variant="contained"
+                          color="primary"
+                          style={{ marginRight: '10px' }}
+                        >
+                          Submit
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => handleModifyData(dataItem._id)}
+                          variant="contained"
+                          color="primary"
+                          style={{ marginRight: '10px' }}
+                        >
+                          Modify
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => handleDeleteData(category, dataItem._id)}
+                        variant="contained"
+                        color="secondary"
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <TablePagination
+            style={{ marginTop: '20px' }}
+            rowsPerPageOptions={[10, 25, 100]}
+            component="div"
+            count={categoryData[category] ? categoryData[category].length : 0}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
+        </Paper>
+      ))}
     </div>
   );
 };
