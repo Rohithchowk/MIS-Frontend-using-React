@@ -25,6 +25,7 @@ const GblockData = Loadable(lazy(() => import('views/utilities/Gblockdata')));
 const HblockData = Loadable(lazy(() => import('views/utilities/Hblockdata')));
 const SMSblockData = Loadable(lazy(() => import('views/utilities/SMSblockdata')));
 const RDblockData = Loadable(lazy(() => import('views/utilities/R&Dblockdata')));
+const SampleData = Loadable(lazy(() => import('views/utilities/LblockAllData')));
 
 
 // sample page routing
@@ -230,6 +231,10 @@ const MainRoutes = {
     {
       path: 'indoorsports',
       element: <IndoorSports />
+    },
+        {
+      path: 'sampledata',
+      element: <SampleData/>
     },
   ]
 };
